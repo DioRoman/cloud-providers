@@ -1,11 +1,24 @@
 # Создание сетей, подсетей и групп безопасности
 
-module "yandex-vpc" {
-  source       = "git::https://github.com/DioRoman/ter-final.git//src/modules/yandex-vpc?ref=main"
-  env_name     = var.kubernetes[0].env_name
+module "yandex-vpc" { 
+  source       = "git::https://github.com/DioRoman/ter-yandex-vpc-module.git?ref=main"
+  env_name     = var.vm_public[0].env_name
   subnets = [
-    { zone = var.vpc_default_zone[0], cidr = var.vpc_default_cidr[1] }
+    {
+      name        = "public"
+      cidr        = "192.168.10.0/24"
+      zone        = "ru-central1-a"
+      description = "Public subnet"
+    },
+    {
+      name        = "private"
+      cidr        = "192.168.20.0/24"
+      zone        = "ru-central1-a"
+      description = "Private subnet"
+      route_table_id = yandex_vpc_route_table.private.id
+    }
   ]
+  
   security_groups = [
     {
       name        = "web"
@@ -29,81 +42,6 @@ module "yandex-vpc" {
           description = "SSH access"
           cidr_blocks = ["0.0.0.0/0"]
         },
-        {
-          protocol    = "TCP"
-          port        = 10443
-          description = "MicroK8s console"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          port        = 30080
-          description = "MicroK8s service"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          port        = 30880
-          description = "MicroK8s service"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          port        = 8080
-          description = "MicroK8s service"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          port        = 6443
-          description = "	Kubernetes API server"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          port        = 10250
-          description = "Kubelet API"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          port        = 10259
-          description = "kube-scheduler"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          port        = 10257
-          description = "kube-controller-manager"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          from_port = 2379
-          to_port   = 2380   
-          description = "etcd server client API"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          port        = 10256
-          description = "kube-proxy"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "TCP"
-          from_port = 30000
-          to_port   = 32767
-          description = "NodePort Services"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          protocol    = "UDP"
-          from_port = 30000
-          to_port   = 32767
-          description = "NodePort Services"
-          cidr_blocks = ["0.0.0.0/0"]
-        }
       ],
     egress_rules = [
         {
@@ -116,61 +54,101 @@ module "yandex-vpc" {
   ]
 }
 
+# Добавление статического маршрута для исходящего трафика из приватной подсети через NAT-инстанс
+resource "yandex_vpc_route_table" "private" {
+  name       = "private-route-table"
+  network_id = module.yandex-vpc.network_id
+
+  static_route {
+    destination_prefix = "0.0.0.0/0"
+    next_hop_address   = "192.168.10.254"
+  }
+  labels = {
+    environment = "dev"
+  }
+}
+
 # Создание VM
 
-module "kubernetes" {
-  source              = "git::https://github.com/DioRoman/ter-final.git//src/modules/yandex-vm?ref=main"
-  vm_name             = var.kubernetes[0].instance_name 
-  vm_count            = var.kubernetes[0].instance_count
+module "vm_public" {
+  source              = "git::https://github.com/DioRoman/ter-yandex-vm-module.git?ref=main"
+  vm_name             = var.vm_public[0].instance_name 
+  vm_count            = var.vm_public[0].instance_count
   zone                = var.vpc_default_zone[0]
-  subnet_ids          = module.yandex-vpc.subnet_ids
+  subnet_ids          = [module.yandex-vpc.subnet_ids[0]]
   image_id            = data.yandex_compute_image.ubuntu.id
-  platform_id         = var.kubernetes[0].platform_id
-  cores               = var.kubernetes[0].cores
-  memory              = var.kubernetes[0].memory
-  disk_size           = var.kubernetes[0].disk_size 
-  public_ip           = var.kubernetes[0].public_ip
+  platform_id         = var.vm_public[0].platform_id
+  cores               = var.vm_public[0].cores
+  memory              = var.vm_public[0].memory
+  disk_size           = var.vm_public[0].disk_size 
+  public_ip           = var.vm_public[0].public_ip
   security_group_ids  = [module.yandex-vpc.security_group_ids["web"]]
   
   labels = {
-    env  = var.kubernetes[0].env_name
-    role = var.kubernetes[0].role
+    env  = var.vm_public[0].env_name
+    role = var.vm_public[0].role
   }
 
   metadata = {
-    user-data = data.template_file.kubernetes.rendered
+    user-data = data.template_file.vm.rendered
     serial-port-enable = local.serial-port-enable
   }  
 }
 
-module "kubernetes-nodes" {
-  source              = "git::https://github.com/DioRoman/ter-final.git//src/modules/yandex-vm?ref=main"
-  vm_name             = var.kubernetes-node[0].instance_name 
-  vm_count            = var.kubernetes-node[0].instance_count
+module "vm_private" {
+  source              = "git::https://github.com/DioRoman/ter-yandex-vm-module.git?ref=main"
+  vm_name             = var.vm_private[0].instance_name 
+  vm_count            = var.vm_private[0].instance_count
   zone                = var.vpc_default_zone[0]
-  subnet_ids          = module.yandex-vpc.subnet_ids
+  subnet_ids          = [module.yandex-vpc.subnet_ids[1]]
   image_id            = data.yandex_compute_image.ubuntu.id
-  platform_id         = var.kubernetes-node[0].platform_id
-  cores               = var.kubernetes-node[0].cores
-  memory              = var.kubernetes-node[0].memory
-  disk_size           = var.kubernetes-node[0].disk_size 
-  public_ip           = var.kubernetes-node[0].public_ip
+  platform_id         = var.vm_private[0].platform_id
+  cores               = var.vm_private[0].cores
+  memory              = var.vm_private[0].memory
+  disk_size           = var.vm_private[0].disk_size 
+  public_ip           = var.vm_private[0].public_ip
   security_group_ids  = [module.yandex-vpc.security_group_ids["web"]]
   
   labels = {
-    env  = var.kubernetes-node[0].env_name
-    role = var.kubernetes-node[0].role
+    env  = var.vm_private[0].env_name
+    role = var.vm_private[0].role
   }
 
   metadata = {
-    user-data = data.template_file.kubernetes.rendered
+    user-data = data.template_file.vm.rendered
+    serial-port-enable = local.serial-port-enable
+  }  
+}
+
+module "vm_nat" {
+  source              = "git::https://github.com/DioRoman/ter-yandex-vm-module.git?ref=main"
+  vm_name             = var.vm_nat[0].instance_name 
+  vm_count            = var.vm_nat[0].instance_count
+  zone                = var.vpc_default_zone[0]
+  subnet_ids          = [module.yandex-vpc.subnet_ids[0]]
+  image_id            = var.vm_nat_image
+  platform_id         = var.vm_nat[0].platform_id
+  cores               = var.vm_nat[0].cores
+  memory              = var.vm_nat[0].memory
+  disk_size           = var.vm_nat[0].disk_size 
+  public_ip           = var.vm_nat[0].public_ip
+  known_internal_ip   = var.vm_nat[0].known_internal_ip
+  security_group_ids  = [module.yandex-vpc.security_group_ids["web"]]
+  
+  labels = {
+    env  = var.vm_nat[0].env_name
+    role = var.vm_nat[0].role
+  }
+
+  metadata = {
+    user-data = data.template_file.vm.rendered
     serial-port-enable = local.serial-port-enable
   }  
 }
 
 # Инициализация 
-data "template_file" "kubernetes" {
-  template = file("./kubernetes.yml")
+data "template_file" "vm" {
+  template = file("./vm.yml")
     vars = {
     ssh_public_key     = file(var.vm_ssh_root_key)
   }

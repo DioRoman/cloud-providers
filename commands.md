@@ -1,7 +1,7 @@
 ### Terraform
 
 - Перейти в каталог с конфигурацией:
-  - `cd /mnt/c/Users/rlyst/Netology/kubernetes/terraform`
+  - `cd /mnt/c/Users/rlyst/GIT/cloud-providers/terraform`
 - Инициализировать Terraform:
   - `terraform init`
 - Применить инфраструктуру (создать кластер):

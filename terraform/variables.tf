@@ -27,8 +27,8 @@ variable "vpc_default_cidr" {
   description = "Available cidr blocks for public subnets."
   type        = list(string)
   default     = [
-    "10.0.1.0/24",
-    "10.0.2.0/24",
+    "192.168.10.0/24",
+    "192.168.20.0/24",
     "10.0.3.0/24",
   ]
 }
@@ -44,4 +44,9 @@ variable "vm_ssh_root_key" {
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
   description = "ssh-keygen -t ed25519"
+}
+
+variable "vm_nat_image" {
+  type        = string
+  default     = "fd80mrhj8fl2oe87o4e1"
 }

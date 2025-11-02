@@ -1,24 +1,23 @@
 # Web outputs
-output "kubernetes_private_ips" {
+output "vm_public_ips" {
   description = "Private IP addresses of Web VMs"
-  value       = module.kubernetes.internal_ips
+  value       = module.vm_public.internal_ips
 }
 
-output "kubernetes_ssh" {
+output "vm_nat_ips" {
+  description = "Private IP addresses of Web VMs"
+  value       = module.vm_nat.internal_ips
+}
+
+output "vm_private_ips" {
+  description = "Private IP addresses of Web VMs"
+  value       = module.vm_private.internal_ips
+}
+
+
+output "vm_public_ssh" {
   description = "SSH commands to connect to Web VMs"
   value = [
-    for ip in module.kubernetes.external_ips : "ssh -l ubuntu ${ip}"
-  ]
-}
-
-output "kubernetes_node_private_ips" {
-  description = "Private IP addresses of Web VMs"
-  value       = module.kubernetes-nodes.internal_ips
-}
-
-output "kubernetes_node_ssh" {
-  description = "SSH commands to connect to Web VMs"
-  value = [
-    for ip in module.kubernetes-nodes.external_ips : "ssh -l ubuntu ${ip}"
+    for ip in module.vm_public.external_ips : "ssh -l ubuntu ${ip}"
   ]
 }
