@@ -89,3 +89,8 @@
   - `kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml`
 - Присоединить worker (через Ansible):
   - `ansible-playbook -i inventories/hosts.yml install-node.yml --extra-vars "kube_join_command='kubeadm join k8s-master:6443 --token ... --discovery-token-ca-cert-hash sha256:...'"`
+
+
+ssh -J ubuntu@158.160.110.4 ubuntu@192.168.20.10
+ssh -J ubuntu@158.160.110.4 ubuntu@192.168.10.10
+ssh -J ubuntu@158.160.53.58 ubuntu@192.168.10.254

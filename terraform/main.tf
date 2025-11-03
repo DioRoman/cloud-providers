@@ -42,6 +42,11 @@ module "yandex-vpc" {
           description = "SSH access"
           cidr_blocks = ["0.0.0.0/0"]
         },
+        {
+          protocol    = "ICMP"
+          description = "ICMP"
+          cidr_blocks = ["0.0.0.0/0"]
+        },
       ],
     egress_rules = [
         {
@@ -61,7 +66,7 @@ resource "yandex_vpc_route_table" "private" {
 
   static_route {
     destination_prefix = "0.0.0.0/0"
-    next_hop_address   = "192.168.10.254"
+    next_hop_address   = var.vm_nat[0].known_internal_ip
   }
   labels = {
     environment = "dev"
@@ -82,6 +87,7 @@ module "vm_public" {
   memory              = var.vm_public[0].memory
   disk_size           = var.vm_public[0].disk_size 
   public_ip           = var.vm_public[0].public_ip
+  known_internal_ip   = var.vm_public[0].known_internal_ip
   security_group_ids  = [module.yandex-vpc.security_group_ids["web"]]
   
   labels = {
@@ -107,6 +113,7 @@ module "vm_private" {
   memory              = var.vm_private[0].memory
   disk_size           = var.vm_private[0].disk_size 
   public_ip           = var.vm_private[0].public_ip
+  known_internal_ip   = var.vm_private[0].known_internal_ip
   security_group_ids  = [module.yandex-vpc.security_group_ids["web"]]
   
   labels = {

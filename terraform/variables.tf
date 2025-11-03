@@ -29,7 +29,7 @@ variable "vpc_default_cidr" {
   default     = [
     "192.168.10.0/24",
     "192.168.20.0/24",
-    "10.0.3.0/24",
+    "192.168.30.0/24",
   ]
 }
 
@@ -48,5 +48,5 @@ variable "vm_ssh_root_key" {
 
 variable "vm_nat_image" {
   type        = string
-  default     = "fd80mrhj8fl2oe87o4e1"
+  default     = "fd8hqm1si8i5ul8v396c"
 }
