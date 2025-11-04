@@ -6,13 +6,13 @@ variable "vm_public" {
     { 
     env_name          = "vm-public",
     instance_name     = "vm-public", 
-    instance_count    = 1, 
+    instance_count    = 3, 
     public_ip         = true,
     known_internal_ip = "192.168.10.10",
     platform_id       = "standard-v3",
     cores             = 2,
     memory            = 4,
-    disk_size         = 10,
+    disk_size         = 20,
     role              = "public"    
   }])
 }

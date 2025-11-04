@@ -50,3 +50,33 @@ variable "vm_nat_image" {
   type        = string
   default     = "fd8hqm1si8i5ul8v396c"
 }
+
+variable "vm_lamp_image" {
+  type        = string
+  default     = "fd8na0csfs8r1mb91trm"
+}
+
+
+variable "bucket_name" {
+  type        = string
+  default     = "dio-new-bucket-20251104"
+  description = "Unique bucket name"
+}
+
+variable "local_image_path" {
+  type        = string
+  default     = "/mnt/c/Users/rlyst/GIT/cloud-providers/terraform/image.jpg"
+  description = "Local path to the image file to upload"
+}
+
+variable "service_account_id" {
+  description = "Service account ID for VM instance group"
+  type        = string
+  default     = "ajegmcrosjf3g105qpsd"
+}
+
+variable "nlb_external_ip" {
+  description = "External IP for NLB"
+  type        = string
+  default     = null
+}

@@ -11,3 +11,6 @@ package_update: true
 package_upgrade: true
 packages:
   - mc
+
+runcmd:
+  - echo '<html><body><h1>Welcome to LAMP server</h1><img src="https://storage.yandexcloud.net/${bucket_name}/image.jpg" alt="Bucket Image"></body></html>' > /var/www/html/index.html

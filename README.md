@@ -1,137 +1,138 @@
-# Terraform — Yandex Cloud VPC, NAT-инстанс и VM
-
-Этот проект создает инфраструктуру в **Yandex Cloud**, включающую сеть с публичной и приватной подсетями, NAT-инстанс для выхода из приватной сети в интернет, а также виртуальные машины, сгруппированные по ролям (public, private, nat).
+# Terraform Yandex Cloud LAMP Infrastructure
 
 ***
 
-## Структура
+## Описание
 
-- **VPC и подсети**:
-  - `public` — подсеть для внешних ресурсов (доступ к интернету).
-  - `private` — подсеть без прямого доступа в интернет, использует NAT для исходящего трафика.
-- **Security Groups**:
-  - `web` — разрешает HTTP (80), HTTPS (443), SSH (22) и ICMP-трафик.
-- **Виртуальные машины**:
-  - `vm-public` — публичная VM с внешним IP.
-  - `vm-private` — приватная VM без прямого доступа к интернету.
-  - `vm-nat` — NAT-инстанс с публичным IP для маршрутизации исходящего трафика приватной сети.
-- **Route table**:
-  - `private-route-table` — направляет исходящий трафик из приватной сети на NAT-инстанс.
+Проект автоматизирует развертывание LAMP-инфраструктуры в **Yandex Cloud**, используя Terraform.  
+Включает создание виртуальных сетей, подсетей, NAT-инстанса, публичных и приватных ВМ, группу инстансов с автоскейлингом, балансировщик нагрузки (NLB) и Object Storage (аналог S3) с публичным доступом к изображению.
+
+Архитектура ориентирована на развёртывание LAMP-сервера с веб-доступом через балансировщик и интернет-доступом для приватных ВМ через NAT.
 
 ***
 
-## Предварительные требования
+## Компоненты инфраструктуры
 
-1. **Terraform ≥ 1.8.0**  
-2. **CLI-инструменты**:  
-   - `yc` — для управления облаком Yandex Cloud  
-   - `yq`/`jq` — для работы с YAML/JSON
-3. **Сервисный аккаунт** с достаточными правами (`editor` или выше).  
-   Скачай ключ:
-   ```bash
-   yc iam key create --service-account-name <sa-name> --output ~/.authorized_key.json
-   ```
-4. **SSH-ключ** для доступа к виртуальным машинам:
-   ```bash
-   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
-   ```
+- **VPC и подсети**
+  - Публичная подсеть (`192.168.10.0/24`)
+  - Приватная подсеть (`192.168.20.0/24`)
+  - Таблица маршрутизации для выхода приватных хостов через NAT-инстанс
+
+- **Группы безопасности**
+  - Разрешены порты 22 (SSH), 80 (HTTP), 443 (HTTPS), ICMP
+
+- **Инстансы и группы**
+  - **Instance Group** `vm_public_group`:  
+    Автоматически управляемая группа из LAMP-серверов с шаблоном cloud-init (`vm-lamp.yml`).  
+    Использует балансировщик для HTTP-запросов.
+  - **vm_private**: Приватная VM в подсети без NAT.
+  - **vm_nat**: NAT-инстанс для доступа приватных хостов в интернет.
+
+- **Load Balancer**
+  - `yandex_lb_network_load_balancer.web_nlb` слушает порт 80 и проверяет здоровье LAMP-инстансов.
+  - Привязан к статическому IP (`yandex_vpc_address.nlb_external_ip`).
+
+- **Object Storage**
+  - Публичный бакет с загружаемым изображением (`image.jpg`).
+  - HTML-файл на LAMP-серверах ссылается на это изображение через публичный URL.
+
+***
+
+## Файлы проекта
+
+| Файл | Описание |
+|------|-----------|
+| `main.tf` | Основная конфигурация Terraform |
+| `vm-lamp.yml` | cloud-init для LAMP-инстансов (создает страницу с публичным изображением) |
+| `vm.yml` | cloud-init для базовой конфигурации ВМ |
+| `variables.tf` | Переменные окружения и параметры ВМ |
+| `outputs.tf` | Вывод IP-адресов, URL и других значений |
+| `backend` | Конфигурация S3 backend для хранения состояния |
+| `modules/` | Используемые модули Terraform (подключаются из GitHub) |
 
 ***
 
 ## Переменные
 
-| Имя                     | Описание                                                | Значение по умолчанию |
-|--------------------------|----------------------------------------------------------|------------------------|
-| `cloud_id`               | ID облака                                               | `b1g2uh898q9ekgq43tfq` |
-| `folder_id`              | ID каталога                                             | `b1g22qi1cc8rq4avqgik` |
-| `vpc_default_zone`       | Список доступных зон                                    | `[a, b, d]` |
-| `vm_web_image_family`    | Образ для VM                                            | `ubuntu-2404-lts` |
-| `vm_ssh_root_key`        | Путь к SSH-ключу                                        | `~/.ssh/id_ed25519.pub` |
-| `vm_nat_image`           | Образ для NAT                                           | `fd8hqm1si8i5ul8v396c` |
+Часть ключевых переменных определена в секции `variable`:
+
+| Имя | Назначение | Значение по умолчанию |
+|------|-------------|------------------------|
+| `cloud_id` | ID облака Yandex Cloud | `"b1g2uh898q9ekgq43tfq"` |
+| `folder_id` | ID каталога | `"b1g22qi1cc8rq4avqgik"` |
+| `bucket_name` | Имя создаваемого бакета | `"dio-new-bucket-20251104"` |
+| `vm_lamp_image` | ID образа для LAMP | `"fd8na0csfs8r1mb91trm"` |
+| `vm_nat_image` | ID образа NAT-инстанса | `"fd8hqm1si8i5ul8v396c"` |
+| `vm_web_image_family` | Семейство образов Ubuntu | `"ubuntu-2404-lts"` |
+| `vm_ssh_root_key` | Путь к публичному SSH-ключу | `"~/.ssh/id_ed25519.pub"` |
 
 ***
 
-## Модули
+## Выводимые параметры
 
-- **`yandex-vpc`** — создает сеть, подсети, таблицы маршрутов и security groups.  
-- **`vm_public`**, **`vm_private`**, **`vm_nat`** — модульные шаблоны создания ВМ.
+После успешного применения (`terraform apply`) Terraform выведет:
 
-***
-
-## Настройка backend
-
-Хранение состояния Terraform (`terraform.tfstate`) реализовано через **Yandex Object Storage (S3 back-end)** с блокировками в **DynamoDB API**:
-
-```hcl
-backend "s3" {
-  bucket = "dio-bucket"
-  key    = "terraform-learning/terraform.tfstate"
-  region = "ru-central1"
-}
-```
+- `nlb_ip` — внешний IP балансировщика (используйте в браузере)
+- `vm_nat_ips` — внутренние IP NAT-инстансов
+- `vm_private_ips` — внутренние IP приватных ВМ
+- `bucket_name` — имя созданного бакета
+- `image_object_url` — публичный URL изображения в Object Storage
 
 ***
 
-## Развертывание
+## Подготовка окружения
+
+1. Установите **Terraform ≥1.8**  
+2. Настройте Yandex Cloud CLI и создайте сервисный аккаунт:
+   ```bash
+   yc init
+   yc iam service-account create --name terraform-sa
+   yc iam key create --service-account-name terraform-sa --output ~/.authorized_key.json
+   ```
+3. Экспортируйте переменные:
+   ```bash
+   export YC_CLOUD_ID=loud_idid>
+   export YC_FOLDER_ID=<folder_id>
+   ```
+4. Убедитесь, что SSH-ключ сгенерирован:
+   ```bash
+   ssh-keygen -t ed25519
+   ```
+
+***
+
+## Развёртывание
 
 ```bash
-# Инициализация провайдеров и модулей
 terraform init
-
-# Проверка конфигурации
-terraform validate
-
-# Предпросмотр плана изменений
 terraform plan
-
-# Применение конфигурации
 terraform apply
 ```
 
-***
+После завершения откройте в браузере:
 
-## Cloud-config
-
-Виртуальные машины автоматически настраиваются с помощью `cloud-init`:
-```yaml
-users:
-  - name: ubuntu
-    groups: sudo
-    shell: /bin/bash
-    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
-    ssh_authorized_keys:
-      - ${ssh_public_key}
-
-package_update: true
-package_upgrade: true
-packages:
-  - mc
+```
+http://<nlb_ip>
 ```
 
-***
-
-## Outputs
-
-| Имя output | Описание | Пример |
-|-------------|-----------|--------|
-| `vm_public_ips` | Внутренние IP публичных ВМ | `192.168.10.10` |
-| `vm_nat_ips` | IP NAT-инстансов | `192.168.10.254` |
-| `vm_private_ips` | Внутренние IP приватных ВМ | `192.168.20.10` |
-| `vm_public_ssh` | Готовые SSH-команды для подключения | `ssh -l ubuntu <ip>` |
+Вы увидите страницу с загруженным изображением из Object Storage.
 
 ***
 
-## Проверка подключения
+## Удаление ресурсов
 
-После развертывания можно подключиться:
+Чтобы полностью очистить окружение:
+
 ```bash
-terraform output vm_public_ssh
-# или напрямую
-ssh -l ubuntu <PUBLIC_IP>
+terraform destroy
 ```
 
-Для проверки доступа из приватной ВМ через NAT:
-```bash
-ssh -J ubuntu@<PUBLIC_IP_OF_NAT> ubuntu@192.168.20.10
-ping 8.8.8.8
-```
+Это удалит все созданные ресурсы, включая ВМ, сеть, балансировщик и бакет.
+
+***
+
+## Автор
+
+**Dio Roman**  
+Terraform + Yandex Cloud Infrastructure Automation  
+GitHub: [github.com/DioRoman](https://github.com/DioRoman)

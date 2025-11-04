@@ -75,31 +75,31 @@ resource "yandex_vpc_route_table" "private" {
 
 # Создание VM
 
-module "vm_public" {
-  source              = "git::https://github.com/DioRoman/ter-yandex-vm-module.git?ref=main"
-  vm_name             = var.vm_public[0].instance_name 
-  vm_count            = var.vm_public[0].instance_count
-  zone                = var.vpc_default_zone[0]
-  subnet_ids          = [module.yandex-vpc.subnet_ids[0]]
-  image_id            = data.yandex_compute_image.ubuntu.id
-  platform_id         = var.vm_public[0].platform_id
-  cores               = var.vm_public[0].cores
-  memory              = var.vm_public[0].memory
-  disk_size           = var.vm_public[0].disk_size 
-  public_ip           = var.vm_public[0].public_ip
-  known_internal_ip   = var.vm_public[0].known_internal_ip
-  security_group_ids  = [module.yandex-vpc.security_group_ids["web"]]
+# module "vm_public" {
+#   source              = "git::https://github.com/DioRoman/ter-yandex-vm-module.git?ref=main"
+#   vm_name             = var.vm_public[0].instance_name 
+#   vm_count            = var.vm_public[0].instance_count
+#   zone                = var.vpc_default_zone[0]
+#   subnet_ids          = [module.yandex-vpc.subnet_ids[0]]
+#   image_id            = var.vm_lamp_image
+#   platform_id         = var.vm_public[0].platform_id
+#   cores               = var.vm_public[0].cores
+#   memory              = var.vm_public[0].memory
+#   disk_size           = var.vm_public[0].disk_size 
+#   public_ip           = var.vm_public[0].public_ip
+#   known_internal_ip   = var.vm_public[0].known_internal_ip
+#   security_group_ids  = [module.yandex-vpc.security_group_ids["web"]]
   
-  labels = {
-    env  = var.vm_public[0].env_name
-    role = var.vm_public[0].role
-  }
+#   labels = {
+#     env  = var.vm_public[0].env_name
+#     role = var.vm_public[0].role
+#   }
 
-  metadata = {
-    user-data = data.template_file.vm.rendered
-    serial-port-enable = local.serial-port-enable
-  }  
-}
+#   metadata = {
+#     user-data = data.template_file.vm-lamp.rendered
+#     serial-port-enable = local.serial-port-enable
+#   }  
+# }
 
 module "vm_private" {
   source              = "git::https://github.com/DioRoman/ter-yandex-vm-module.git?ref=main"
@@ -156,8 +156,16 @@ module "vm_nat" {
 # Инициализация 
 data "template_file" "vm" {
   template = file("./vm.yml")
-    vars = {
-    ssh_public_key     = file(var.vm_ssh_root_key)
+  vars = {
+    ssh_public_key = file(var.vm_ssh_root_key)
+  }
+}
+
+data "template_file" "vm-lamp" {
+  template = file("./vm-lamp.yml")
+  vars = {
+    ssh_public_key = file(var.vm_ssh_root_key)
+    bucket_name    = var.bucket_name
   }
 }
 
