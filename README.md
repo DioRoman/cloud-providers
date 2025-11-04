@@ -9,6 +9,34 @@
 
 Архитектура ориентирована на развёртывание LAMP-сервера с веб-доступом через балансировщик и интернет-доступом для приватных ВМ через NAT.
 
+                           Интернет
+                               │
+                      ┌─────────────────┐
+                      │   NLB (HTTP/80) │
+                      │-----------------│
+                      │ IP: <nlb_ip>    │
+                      └─────────────────┘
+                               │
+               ┌───────────────┴───────────────┐
+               │                               │
+     ┌───────────────────────┐       ┌───────────────────────┐
+     │  Публичная подсеть    │       │   Приватная подсеть   │
+     │ CIDR: 192.168.10.0/24 │       │ CIDR: 192.168.20.0/24 │
+     │ Zone: ru-central1-a   │       │ Zone: ru-central1-a   │
+     │                       │       │                       │
+     │  ┌─────────────────┐  │       │   ┌────────────────┐  │
+     │  │ Instance Group  │◄─┘       │   │ Private VM     │  │
+     │  │ LAMP Servers    │          │   │ Ubuntu Server  │  │
+     │  │ (3 instances)   │          │   └────────────────┘  │
+     │  │ HTML + image S3 │          │       │               │
+     │  └─────────────────┘          │       │ default route │
+     │             │                 │       ▼ via NAT       │
+     │  ┌─────────────────┐          │   ┌──────────────────┐│
+     │  │ NAT Instance    │──────────┘   │ Route Table      ││
+     │  │ 192.168.10.254  │              │ 0.0.0.0/0 → NAT  ││
+     │  └─────────────────┘              └──────────────────┘│
+     └───────────────────────┘       └───────────────────────┘
+
 ***
 
 ## Компоненты инфраструктуры
@@ -28,13 +56,25 @@
   - **vm_private**: Приватная VM в подсети без NAT.
   - **vm_nat**: NAT-инстанс для доступа приватных хостов в интернет.
 
+<img width="1527" height="450" alt="Снимок экрана 2025-11-04 182958" src="https://github.com/user-attachments/assets/c2f9db80-7859-42f4-86d1-5dcaee16c90e" />
+
+<img width="1646" height="265" alt="Снимок экрана 2025-11-04 183007" src="https://github.com/user-attachments/assets/57ed409d-a583-4d4f-9a6a-49aee0645912" />
+
 - **Load Balancer**
   - `yandex_lb_network_load_balancer.web_nlb` слушает порт 80 и проверяет здоровье LAMP-инстансов.
   - Привязан к статическому IP (`yandex_vpc_address.nlb_external_ip`).
 
+<img width="1199" height="228" alt="Снимок экрана 2025-11-04 183023" src="https://github.com/user-attachments/assets/4b179be6-df88-41d1-8e45-721af858146f" />
+
+<img width="753" height="1162" alt="Снимок экрана 2025-11-04 183052" src="https://github.com/user-attachments/assets/5321b444-862f-4f9d-9482-68d4ba90fc96" />
+
 - **Object Storage**
   - Публичный бакет с загружаемым изображением (`image.jpg`).
   - HTML-файл на LAMP-серверах ссылается на это изображение через публичный URL.
+
+<img width="857" height="326" alt="Снимок экрана 2025-11-04 134102" src="https://github.com/user-attachments/assets/0f2b71bb-86ac-4353-abb7-451ff2a5b21f" />
+
+<img width="976" height="257" alt="Снимок экрана 2025-11-04 134107" src="https://github.com/user-attachments/assets/b70db29c-58a8-4f1f-82fd-37a5116a6ff1" />
 
 ***
 
@@ -121,7 +161,44 @@ terraform apply
 http://<nlb_ip>
 ```
 
+<img width="468" height="546" alt="Снимок экрана 2025-11-04 145206" src="https://github.com/user-attachments/assets/c054c299-57e9-4bb3-986f-b0300da384c5" />
+
 Вы увидите страницу с загруженным изображением из Object Storage.
+
+***
+
+## Тестирование отказоустойчивости
+
+Чтобы убедиться, что инфраструктура корректно справляется с отказами, выполните следующие проверки:
+
+### Проверка отказа LAMP-инстанса
+
+1. Получите список ВМ в группе:
+   ```bash
+   yc compute instance-group list-instances --name vm-public-group
+   ```
+2. Остановите одну из машин:
+   ```bash
+   yc compute instance stop <instance-id>
+   ```
+   
+<img width="1533" height="460" alt="Снимок экрана 2025-11-04 183233" src="https://github.com/user-attachments/assets/36655ca6-f502-4642-974e-d47857d2b790" />
+
+3. Подождите 1–2 минуты и откройте в браузере `http://<nlb_ip>`.
+
+**Результат:** веб-страница продолжает открываться — трафик перенаправлен на оставшиеся инстансы.
+
+<img width="1565" height="62" alt="Снимок экрана 2025-11-04 183301" src="https://github.com/user-attachments/assets/567d168f-0c9c-4063-b16d-911bda755a8f" />
+
+4. Проверьте, что Instance Group автоматически восстановила остановленный инстанс:
+   ```bash
+   yc compute instance-group list-instances --name vm-public-group
+   ```
+   Новый инстанс должен автоматически появиться, а старый — перейти в статус `DELETING` или `STOPPED`.
+
+<img width="750" height="474" alt="Снимок экрана 2025-11-04 183324" src="https://github.com/user-attachments/assets/36bc6517-0890-40d5-a3d0-d03a4402f6e3" />
+
+<img width="1547" height="445" alt="Снимок экрана 2025-11-04 183332" src="https://github.com/user-attachments/assets/6b186c45-20f8-46cc-9cab-87ec8b8eff8e" />
 
 ***
 
