@@ -1,7 +1,3 @@
-Это отличная и довольно комплексная Terraform-конфигурация для развертывания LAMP-инфраструктуры в Yandex Cloud с использованием Instance Group, NAT, приватных и публичных подсетей, а также балансировщика нагрузки и S3-хранилища. Ниже пример подходящего README для такого проекта.
-
-***
-
 # Terraform Yandex Cloud LAMP Infrastructure
 
 ***
@@ -146,7 +142,3 @@ terraform destroy
 **Dio Roman**  
 Terraform + Yandex Cloud Infrastructure Automation  
 GitHub: [github.com/DioRoman](https://github.com/DioRoman)
-
-***
-
-Хотите, чтобы я добавил диаграмму инфраструктуры (сети, NAT, балансировщик, группы ВМ) в markdown-формате для README?
