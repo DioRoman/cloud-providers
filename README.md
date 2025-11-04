@@ -1,37 +1,17 @@
+Это отличная и довольно комплексная Terraform-конфигурация для развертывания LAMP-инфраструктуры в Yandex Cloud с использованием Instance Group, NAT, приватных и публичных подсетей, а также балансировщика нагрузки и S3-хранилища. Ниже пример подходящего README для такого проекта.
+
+***
+
 # Terraform Yandex Cloud LAMP Infrastructure
 
 ***
 
 ## Описание
 
-<<<<<<< HEAD
 Проект автоматизирует развертывание LAMP-инфраструктуры в **Yandex Cloud**, используя Terraform.  
 Включает создание виртуальных сетей, подсетей, NAT-инстанса, публичных и приватных ВМ, группу инстансов с автоскейлингом, балансировщик нагрузки (NLB) и Object Storage (аналог S3) с публичным доступом к изображению.
 
 Архитектура ориентирована на развёртывание LAMP-сервера с веб-доступом через балансировщик и интернет-доступом для приватных ВМ через NAT.
-=======
-- **VPC и подсети**:
-  - `public` — подсеть для внешних ресурсов (доступ к интернету).
-  - `private` — подсеть без прямого доступа в интернет, использует NAT для исходящего трафика.
-
-<img width="1438" height="232" alt="Снимок экрана 2025-11-03 191601" src="https://github.com/user-attachments/assets/fb289b74-6d4a-4a3b-8d53-09f517f3cdd6" />
-
-<img width="1578" height="265" alt="Снимок экрана 2025-11-03 191613" src="https://github.com/user-attachments/assets/ccad2ba9-c5aa-429a-b823-3e052d9cfbfb" />
-
-- **Security Groups**:
-  - `web` — разрешает HTTP (80), HTTPS (443), SSH (22) и ICMP-трафик.
-- **Виртуальные машины**:
-  - `vm-public` — публичная VM с внешним IP.
-  - `vm-private` — приватная VM без прямого доступа к интернету.
-  - `vm-nat` — NAT-инстанс с публичным IP для маршрутизации исходящего трафика приватной сети.
- 
-<img width="1749" height="356" alt="Снимок экрана 2025-11-03 191549" src="https://github.com/user-attachments/assets/0e3c8370-9668-41e8-9212-7eed442b6c77" />
-
-- **Route table**:
-  - `private-route-table` — направляет исходящий трафик из приватной сети на NAT-инстанс.
->>>>>>> 65bf8ab07573e5e728e8cb9598178d546299b834
-
-<img width="1877" height="461" alt="Снимок экрана 2025-11-03 191652" src="https://github.com/user-attachments/assets/2bd15aaa-6b95-40fc-87ec-7d0ac818e025" />
 
 ***
 
@@ -71,7 +51,13 @@
 | `vm.yml` | cloud-init для базовой конфигурации ВМ |
 | `variables.tf` | Переменные окружения и параметры ВМ |
 | `outputs.tf` | Вывод IP-адресов, URL и других значений |
-| `backend` | Конфигурация S3 backend для хранения состояния |
+| `s3bucket.tf` | Конфигурация S3 backend для хранения состояния |
+| `loadbalancer.tf` | Конфигурация netvork load balancer |
+| `vars_modules.tf` | Переменные VM |
+| `instance_group.tf` | Создание instance group |
+| `providers.tf` | Подлючение к провайдеру |
+| `locals.tf` | Общие locals |
+| `image.jpg` | Тестовая картинка |
 | `modules/` | Используемые модули Terraform (подключаются из GitHub) |
 
 ***
@@ -151,7 +137,6 @@ http://<nlb_ip>
 terraform destroy
 ```
 
-<<<<<<< HEAD
 Это удалит все созданные ресурсы, включая ВМ, сеть, балансировщик и бакет.
 
 ***
@@ -161,13 +146,7 @@ terraform destroy
 **Dio Roman**  
 Terraform + Yandex Cloud Infrastructure Automation  
 GitHub: [github.com/DioRoman](https://github.com/DioRoman)
-=======
-Для проверки доступа из приватной ВМ через NAT:
-```bash
-ssh -J ubuntu@<PUBLIC_IP_OF_NAT> ubuntu@192.168.20.10
-ping 8.8.8.8
-```
 
-<img width="717" height="362" alt="Снимок экрана 2025-11-03 191825" src="https://github.com/user-attachments/assets/8e4502c6-42fb-4668-af40-78d36d53c101" />
+***
 
->>>>>>> 65bf8ab07573e5e728e8cb9598178d546299b834
+Хотите, чтобы я добавил диаграмму инфраструктуры (сети, NAT, балансировщик, группы ВМ) в markdown-формате для README?
