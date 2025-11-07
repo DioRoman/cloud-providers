@@ -59,7 +59,7 @@ variable "vm_lamp_image" {
 
 variable "bucket_name" {
   type        = string
-  default     = "dio-new-bucket-20251104"
+  default     = "dio-new-bucket-20251105"
   description = "Unique bucket name"
 }
 

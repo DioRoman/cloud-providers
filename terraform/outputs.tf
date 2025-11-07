@@ -36,3 +36,11 @@ output "nlb_ip" {
   description = "External IP address of the network load balancer"
   value = yandex_vpc_address.nlb_external_ip.external_ipv4_address[0].address
 }
+
+
+output "vm_public_group_external_ips" {
+  description = "External IP addresses of instances in public VM group"
+  value = [
+    for instance in yandex_compute_instance_group.vm_public_group.instances : "http://${instance.network_interface[0].nat_ip_address}"
+  ]
+}
