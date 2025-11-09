@@ -57,7 +57,7 @@ variable "mysql_version" {
 variable "mysql_deletion_protection" {
   description = "Prevent accidental MySQL cluster deletion"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "mysql_resource_preset_id" {
