@@ -1,1 +1,0 @@
-{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"yandex-vpc","Source":"git::https://github.com/DioRoman/ter-yandex-vpc-module.git?ref=a7c4bbb","Dir":".terraform/modules/yandex-vpc"}]}
