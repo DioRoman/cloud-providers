@@ -1,7 +1,7 @@
 # Создание сетей, подсетей и групп безопасности
 
 module "yandex-vpc" { 
-  source       = "git::https://github.com/DioRoman/ter-yandex-vpc-module.git?ref=main"
+  source = "git::https://github.com/DioRoman/ter-yandex-vpc-module.git?ref=a7c4bbb"
   env_name     = var.vm_public[0].env_name
   subnets = [
     {
