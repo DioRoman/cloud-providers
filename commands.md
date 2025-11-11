@@ -6,6 +6,7 @@
 # Перейти в директорию с конфигурацией
 cd /mnt/c/Users/rlyst/GIT/cloud-providers/terraform
 cd /mnt/c/Users/rlyst/GIT/cloud-providers/terraform_mysql_cluster
+cd /mnt/c/Users/rlyst/GIT/cloud-providers/terraform_k8s_cluster
 
 # Инициализировать Terraform
 terraform init
