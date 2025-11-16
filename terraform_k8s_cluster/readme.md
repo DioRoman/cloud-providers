@@ -7,6 +7,9 @@
 Этот проект автоматизирует развёртывание и управление следующими компонентами:
 
 - **Kubernetes кластер (HA)**: Управляемый кластер Kubernetes в трёх зонах доступности (ru-central1-a, ru-central1-b, ru-central1-d)
+
+<img width="1229" height="299" alt="Снимок экрана 2025-11-15 171801" src="https://github.com/user-attachments/assets/098fa23d-3fc5-428f-9a8f-dfb7efd87305" />
+
 - **Сетевая инфраструктура**: VPC с подсетями в каждой зоне, security groups и NAT
 - **Шифрование**: KMS ключ для шифрования Kubernetes secrets
 - **Базы данных**: MySQL Pod с persistent storage
@@ -237,12 +240,22 @@ terraform apply tfplan
 
 Развёртывание может занять 20-30 минут. Terraform создаст:
 - VPC сеть с 3 подсетями
+
+<img width="1889" height="529" alt="Снимок экрана 2025-11-15 171754" src="https://github.com/user-attachments/assets/54f717d2-7b3f-462d-b4ed-f776f95c0f3a" />
+
 - Security Groups
 - KMS ключ
 - Kubernetes кластер с Control Plane
+
+<img width="899" height="761" alt="Снимок экрана 2025-11-15 171814" src="https://github.com/user-attachments/assets/e93b50ea-5993-44b5-9102-47e1a2313fbd" />
+
 - 3 Node Groups (по одной в каждой зоне)
+
+<img width="1506" height="389" alt="Снимок экрана 2025-11-15 171825" src="https://github.com/user-attachments/assets/bdb34e2f-242e-421f-8c73-9b8e90f2eb25" />
+
 - MySQL Pod с Service
 - phpMyAdmin Deployment с LoadBalancer
+
 
 ### Шаг 5: Конфигурация kubectl
 
@@ -298,6 +311,8 @@ terraform output phpmyadmin_url
 # Статус кластера
 terraform output cluster_status
 ```
+
+<img width="1776" height="952" alt="Снимок экрана 2025-11-15 162010" src="https://github.com/user-attachments/assets/dff2a0c3-faad-476b-8d01-40e375085629" />
 
 ## 💾 Backend состояния (S3 + DynamoDB)
 
@@ -441,6 +456,8 @@ scheduling_policy {
   preemptible = false
 }
 ```
+
+<img width="1882" height="1061" alt="Снимок экрана 2025-11-15 171932" src="https://github.com/user-attachments/assets/2555090a-b518-48e6-9c72-6b4d007970d7" />
 
 ## ⚠️ Важные замечания
 
