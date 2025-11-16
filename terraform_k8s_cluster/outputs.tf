@@ -19,7 +19,7 @@ output "service_account_id" {
 }
 
 output "network_id" {
-  value       = yandex_vpc_network.k8s_network.id
+  value       = module.yandex-vpc.network_id
   description = "VPC network ID"
 }
 
@@ -37,4 +37,32 @@ output "master_ca_certificate" {
   value       = yandex_kubernetes_cluster.k8s_cluster.master[0].cluster_ca_certificate
   sensitive   = true
   description = "Master CA certificate"
+}
+
+output "kubectl_config" {
+  value       = "yc managed-kubernetes cluster get-credentials ${yandex_kubernetes_cluster.k8s_cluster.name} --external"
+  description = "Command to configure kubectl"
+}
+
+output "mysql_endpoint" {
+  value       = "mysql.default.svc.cluster.local:3306"
+  description = "MySQL service endpoint within cluster"
+}
+
+output "phpmyadmin_url" {
+  value       = format("http://%s", kubernetes_service.phpmyadmin-service.status[0].load_balancer[0].ingress[0].ip)
+  description = "URL для доступа к phpMyAdmin"
+}
+
+output "cluster_status" {
+  value = {
+    id     = yandex_kubernetes_cluster.k8s_cluster.id
+    status = yandex_kubernetes_cluster.k8s_cluster.status
+    nodes  = {
+      zone_a = yandex_kubernetes_node_group.k8s_node_group["ru-central1-a"].scale_policy[0].auto_scale[0].min
+      zone_b = yandex_kubernetes_node_group.k8s_node_group["ru-central1-b"].scale_policy[0].auto_scale[0].min
+      zone_d = yandex_kubernetes_node_group.k8s_node_group["ru-central1-d"].scale_policy[0].auto_scale[0].min
+    }
+  }
+  description = "Current cluster status"
 }

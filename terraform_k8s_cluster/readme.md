@@ -1,179 +1,753 @@
-# Terraform: Kubernetes HA Cluster in Yandex Cloud
+# Высокодоступный Kubernetes кластер в Yandex Cloud
 
-Этот проект автоматически разворачивает **высокодоступный кластер Kubernetes** в **Yandex Cloud**, с безопасным хранением секретов, шифрованием через KMS и хранением состояния в Object Storage (S3‑совместимом бакете).
+Полнофункциональный проект Infrastructure-as-Code для развёртывания высокодоступного Kubernetes кластера в Yandex Cloud с поддержкой шифрования данных, MySQL базой данных и phpMyAdmin интерфейсом управления.
 
-***
+## 📋 Описание проекта
 
-## 📦 Файловая структура
+Этот проект автоматизирует развёртывание и управление следующими компонентами:
 
-| Файл | Назначение |
-|------|-------------|
-| `providers.tf` | Настройки Terraform backend, версии и провайдеров |
-| `variables.tf` | Переменные проекта (ID облака, папки, зоны и др.) |
-| `encrypt.tf` | Создание KMS‑ключа для шифрования секретов Kubernetes |
-| `service-account.tf` | Создание сервисного аккаунта и назначение IAM‑ролей |
-| `network.tf` | Создание VPC, подсетей и групп безопасности |
-| `master_k8s.tf` | Создание высокодоступного кластера Kubernetes |
-| `nodes_k8s.tf` | Создание групп узлов (worker nodes) для разных зон |
-| `outputs.tf` | Вывод полезных данных после деплоя (endpoint, kubeconfig и т.п.) |
+- **Kubernetes кластер (HA)**: Управляемый кластер Kubernetes в трёх зонах доступности (ru-central1-a, ru-central1-b, ru-central1-d)
+- **Сетевая инфраструктура**: VPC с подсетями в каждой зоне, security groups и NAT
+- **Шифрование**: KMS ключ для шифрования Kubernetes secrets
+- **Базы данных**: MySQL Pod с persistent storage
+- **Управление БД**: phpMyAdmin Deployment с LoadBalancer Service
+- **Идентификация**: IAM Service Account с необходимыми ролями
+- **Состояние**: Управление состоянием через S3 + DynamoDB
 
-***
+## 🏗️ Архитектура
 
-## 🧱 Инфраструктура
+### Сетевая топология
 
-### 1. Сеть (VPC)
-- Создаётся VPC `k8s-ha-network`
-- 3 подсети в зонах:
-  - `ru-central1-a` – `10.5.0.0/16`
-  - `ru-central1-b` – `10.6.0.0/16`
-  - `ru-central1-d` – `10.7.0.0/16`
-- Настраивается security group с разрешённым трафиком для:
-  - Взаимодействия узлов (`self_security_group`)
-  - Здоровья балансировщиков (health‑checks)
-  - Диапазона NodePort (30000–32767)
-  - ICMP для отладки
+```
+┌─────────────────────────────────────────────────────────┐
+│              Yandex Cloud VPC (10.0.0.0/8)             │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  ┌──────────────────┐  ┌──────────────────┐             │
+│  │   Subnet Zone A  │  │   Subnet Zone B  │  Zone D ...│
+│  │  (10.5.0.0/16)   │  │  (10.6.0.0/16)   │             │
+│  │  ru-central1-a   │  │  ru-central1-b   │             │
+│  └──────────────────┘  └──────────────────┘             │
+│       │                      │                          │
+│       └──────────┬───────────┘                          │
+│                  │                                      │
+│          ┌───────▼────────┐                             │
+│          │  K8s Cluster   │                             │
+│          │  (10.1.0.0/16) │                             │
+│          └────────────────┘                             │
+│                  │                                      │
+│          ┌───────▼────────┐                             │
+│          │  Services      │                             │
+│          │  (10.2.0.0/16) │                             │
+│          └────────────────┘                             │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
 
-### 2. KMS (encrypt.tf)
-- Создаётся симметричный ключ Yandex KMS:
-  - Алгоритм: `AES_128`
-  - Период ротации: 8760 часов (1 год)
-- Применяется для шифрования Kubernetes‑секретов.
+### Компоненты Kubernetes
 
-### 3. Сервисный аккаунт (service-account.tf)
-Создаётся `serviceAccount` для управления кластером и нодами с ролями:
-- `k8s.clusters.agent`
-- `vpc.publicAdmin`
-- `container-registry.images.puller`
-- `kms.keys.encrypterDecrypter`
-- `logging.writer` (опционально)
+```
+┌─────────────────────────────────────────────────────────┐
+│            Kubernetes Cluster (k8s-ha-cluster)          │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  Master (Control Plane)                                 │
+│  └─ Version: 1.32                                       │
+│  └─ Auto-upgrade: Enabled                               │
+│  └─ Maintenance Window: Sunday 22:00-01:00 (3h)         │
+│                                                          │
+│  Node Groups (3 zones):                                 │
+│  ├─ k8s-node-group-ru-central1-a                        │
+│  │  └─ Specs: 4 cores, 2GB RAM (50% preemptible)       │
+│  │  └─ Min: 1, Max: 3, Initial: 1                       │
+│  ├─ k8s-node-group-ru-central1-b                        │
+│  │  └─ Same specs as Zone A                             │
+│  └─ k8s-node-group-ru-central1-d                        │
+│     └─ Same specs as Zone A                             │
+│                                                          │
+│  Workloads:                                             │
+│  ├─ mysql (Pod)                                         │
+│  │  └─ Service: mysql.default.svc.cluster.local:3306   │
+│  │  └─ Type: ClusterIP                                  │
+│  ├─ phpmyadmin (Deployment)                             │
+│  │  └─ Service: LoadBalancer (external IP)              │
+│  │  └─ Replicas: 1                                      │
+│  └─ Volumes:                                            │
+│     └─ mysql-storage (EmptyDir)                         │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
 
-Также создаётся статический ключ для доступа через API (если потребуется).
+## 📁 Структура проекта
 
-### 4. Kubernetes Cluster (master_k8s.tf)
-- Имя: `ha-k8s-cluster`
-- Версия: `1.32`
-- Режим: **Highly Available** (3 зоны)
-- Релиз‑канал: `REGULAR`
-- Автоматические обновления и техобслуживание по расписанию:
-  - Каждое воскресенье в 22:00 на 3 часа
-- Endpoint доступен **публично** (для простоты подключения)
-- Секреты кластера шифруются с помощью KMS‑ключа
+```
+.
+├── encrypt.tf                 # KMS ключи для шифрования
+├── master_k8s.tf             # Конфигурация Control Plane Kubernetes
+├── nodes_k8s.tf              # Конфигурация Node Groups
+├── network.tf                # Сетевая инфраструктура (VPC, Security Groups)
+├── mysql.tf                  # MySQL Pod и Service
+├── phpmyadmin.tf             # phpMyAdmin Deployment и Service
+├── service-account.tf        # IAM Service Account и Role Bindings
+├── providers.tf              # Backend (S3 + DynamoDB), Providers
+├── variables.tf              # Переменные проекта
+├── outputs.tf                # Выходные значения
+├── terraform.tfvars          # Значения переменных (not committed)
+└── README.md                 # Этот файл
+```
 
-### 5. Node Groups (nodes_k8s.tf)
-- 3 группы узлов (`preemptible`, `network‑ssd`, `autoscale`)
-- Каждая группа соответствует одной зоне:
-  - `a`: min=3, max=6, initial=3
-  - `b`: min=1, max=3
-  - `d`: min=1, max=3
-- Настроены автообновление и autorepair
-- CPU: 4, RAM: 2ГБ, core_fraction: 50%
+## 🔐 Безопасность
 
-### 6. Backend (providers.tf)
-Terraform‑состояние хранится в бакете **Yandex Object Storage (S3)**:
-- Бакет: `dio-bucket`
-- Ключ состояния: `terraform-learning/terraform.tfstate`
-- DynamoDB‑таблица для блокировки: `dio-bucket-lock-01`
-- Используются настройки `skip_*` для совместимости с версией Terraform ≥1.6.3.
+### KMS шифрование
 
-***
+Проект использует Yandex KMS для шифрования Kubernetes secrets:
 
-## 🧩 Переменные
+```hcl
+resource "yandex_kms_symmetric_key" "k8s_encryption_key" {
+  name                = "k8s-secrets-encryption-key"
+  description         = "KMS key for Kubernetes secrets encryption"
+  default_algorithm   = "AES_128"
+  rotation_period     = "8760h"  # 1 год
+  labels              = {
+    purpose = "kubernetes"
+    type    = "cluster-encryption"
+  }
+}
+```
 
-| Имя | Описание | Значение по умолчанию |
-|------|-----------|-----------------------|
-| `cloud_id` | ID облака Yandex Cloud | `"b1g2uh898q9ekgq43tfq"` |
-| `folder_id` | ID каталога (папки) | `"b1g22qi1cc8rq4avqgik"` |
-| `vpc_default_zone` | Список зон | `["ru-central1-a","ru-central1-b","ru-central1-d"]` |
+**Параметры:**
+- **Алгоритм**: AES_128 (Advanced Encryption Standard 128-bit)
+- **Период ротации**: 8760 часов (1 год)
+- **Автоматическая ротация**: Включена
 
-***
+### Security Groups
 
-## 🚀 Деплой кластера
+Security Group `k8s-security-group` содержит следующие правила:
 
-### 1. Предусловия
+| Порт | Протокол | Источник | Назначение |
+|------|----------|----------|-----------|
+| 0-65535 | TCP | Cluster + Service CIDR + Суbnets + 91.204.150.0/24 | Межузловое взаимодействие |
+| 80 | TCP | 0.0.0.0/0 | HTTP для phpMyAdmin |
+| 443 | TCP | 0.0.0.0/0 | HTTPS для API |
+| 6443 | TCP | 0.0.0.0/0 | Kubernetes API Server |
+| 10256 | TCP | 0.0.0.0/0 | kubelet API |
+| 3306 | TCP | 0.0.0.0/0 | MySQL |
+| 22 | TCP | 0.0.0.0/0 | SSH доступ |
 
-Перед запуском убедитесь, что у вас есть:
-- Terraform >= **1.8**
-- Конфигурация `yc` CLI и аутентификация выполнена:
-  ```bash
-  yc init
-  ```
-- Файл сервисного аккаунта `~/.authorized_key.json`
-- Настроенный `~/.aws/credentials` и `~/.aws/config` (для S3 backend)
+**Исходящий трафик**: Разрешён весь трафик (ANY)
 
-***
+### IAM Service Account
 
-### 2. Инициализация проекта
+Сервис-аккаунт `k8s-cluster-sa` имеет следующие роли:
+
+- `k8s.clusters.agent` - Управление Kubernetes кластером
+- `vpc.publicAdmin` - Управление VPC и публичными IP
+- `container-registry.images.puller` - Загрузка образов контейнеров
+- `kms.keys.encrypterDecrypter` - Использование KMS ключей
+- `logging.writer` - Запись логов
+- `load-balancer.admin` - Управление Load Balancers
+
+### Kubernetes Secrets
+
+MySQL пароль хранится в Kubernetes Secret и используется как для ROOT_PASSWORD, так и для phpMyAdmin:
+
+```hcl
+resource "kubernetes_secret" "mysql-password" {
+  metadata {
+    name = "mysql-password"
+  }
+  data = {
+    password = base64encode(var.mysql_password)
+  }
+}
+```
+
+⚠️ **Важно**: В production следует использовать более безопасные способы управления secrets (например, Sealed Secrets, HashiCorp Vault).
+
+## 📊 Переменные конфигурации
+
+### Основные переменные
+
+```hcl
+variable "cloud_id" {
+  type        = string
+  default     = "b1g2uh898q9ekgq43tfq"
+  description = "ID облака Yandex Cloud"
+}
+
+variable "folder_id" {
+  type        = string
+  default     = "b1g22qi1cc8rq4avqgik"
+  description = "ID папки Yandex Cloud"
+}
+```
+
+### Переменные Kubernetes
+
+```hcl
+variable "cluster_ipv4_range" {
+  type        = string
+  default     = "10.1.0.0/16"
+  description = "IPv4 диапазон для подсетей Pod'ов"
+}
+
+variable "service_ipv4_range" {
+  type        = string
+  default     = "10.2.0.0/16"
+  description = "IPv4 диапазон для Service'ов"
+}
+
+variable "k8s_version" {
+  type        = string
+  default     = "1.32"
+  description = "Версия Kubernetes"
+}
+```
+
+### Переменные MySQL
+
+```hcl
+variable "mysql_password" {
+  type        = string
+  sensitive   = true
+  description = "Пароль MySQL root пользователя"
+  default     = "ZAQ!xsw2"  # Измените на production!
+}
+
+variable "mysql_resources" {
+  type = object({
+    cpu      = string
+    memory   = string
+    cpu_req  = string
+    mem_req  = string
+  })
+  default = {
+    cpu      = "1000m"
+    memory   = "1Gi"
+    cpu_req  = "500m"
+    mem_req  = "512Mi"
+  }
+  description = "Ресурсы для MySQL Pod"
+}
+```
+
+### Переменные Subnets
+
+```hcl
+variable "subnets" {
+  type = list(object({
+    name        = string
+    cidr        = string
+    zone        = string
+    description = string
+    labels      = map(string)
+  }))
+  default = [
+    {
+      name        = "k8s-subnet-zone-a"
+      cidr        = "10.5.0.0/16"
+      zone        = "ru-central1-a"
+      description = "Subnet in ru-central1-a"
+      labels      = { zone = "ru-central1-a", tier = "worker" }
+    },
+    {
+      name        = "k8s-subnet-zone-b"
+      cidr        = "10.6.0.0/16"
+      zone        = "ru-central1-b"
+      description = "Subnet in ru-central1-b"
+      labels      = { zone = "ru-central1-b", tier = "worker" }
+    },
+    {
+      name        = "k8s-subnet-zone-d"
+      cidr        = "10.7.0.0/16"
+      zone        = "ru-central1-d"
+      description = "Subnet in ru-central1-d"
+      labels      = { zone = "ru-central1-d", tier = "worker" }
+    },
+  ]
+  description = "Список подсетей для VPC"
+}
+```
+
+## 🚀 Установка и развёртывание
+
+### Предварительные требования
+
+- **Terraform** >= 1.8
+- **Yandex CLI** (`yc` command)
+- **kubectl** >= 1.24
+- **AWS CLI** (для работы с S3 и DynamoDB)
+- Аккаунт в Yandex Cloud с соответствующими правами
+- Авторизационный ключ JSON для Service Account
+
+### Шаг 1: Подготовка окружения
+
+Создайте авторизационный ключ для Service Account:
+
+```bash
+yc iam service-account create --name terraform-sa
+yc iam folder-service-account add-access-binding b1g22qi1cc8rq4avqgik \
+  --service-account-name terraform-sa \
+  --role admin
+
+yc iam service-account-key create \
+  --service-account-name terraform-sa \
+  --output ~/.authorized_key.json
+```
+
+Создайте AWS credentials для S3/DynamoDB:
+
+```bash
+yc iam access-key create --service-account-name terraform-sa
+# Сохраните Key ID и Secret Key
+```
+
+Настройте AWS CLI:
+
+```bash
+mkdir -p ~/.aws
+cat > ~/.aws/credentials << EOF
+[default]
+aws_access_key_id = <KEY_ID>
+aws_secret_access_key = <SECRET_KEY>
+EOF
+
+cat > ~/.aws/config << EOF
+[default]
+region = ru-central1
+EOF
+```
+
+### Шаг 2: Инициализация Terraform
+
 ```bash
 terraform init
 ```
 
-***
+Terraform инициализирует backend, создаст необходимые директории и загрузит providers.
 
-### 3. Проверка плана
+### Шаг 3: Планирование развёртывания
+
 ```bash
-terraform plan
+terraform plan -out=tfplan
 ```
 
-***
+Этот команда показывает все изменения, которые будут выполнены.
 
-### 4. Применение конфигурации
+### Шаг 4: Развёртывание
+
 ```bash
-terraform apply
+terraform apply tfplan
 ```
 
-***
+Развёртывание может занять 20-30 минут. Terraform создаст:
+- VPC сеть с 3 подсетями
+- Security Groups
+- KMS ключ
+- Kubernetes кластер с Control Plane
+- 3 Node Groups (по одной в каждой зоне)
+- MySQL Pod с Service
+- phpMyAdmin Deployment с LoadBalancer
 
-### 5. Получение kubeconfig
-После успешного создания инфраструктуры:
+### Шаг 5: Конфигурация kubectl
 
 ```bash
-terraform output kubeconfig_command
-```
-
-Выполните команду из вывода для настройки kubectl, например:
-```bash
+$(terraform output -raw kubeconfig_command)
+# или вручную:
 yc managed-kubernetes cluster get-credentials ha-k8s-cluster --external
 ```
 
-***
+Проверка доступа:
 
-## 🧠 Полезные Outputs
+```bash
+kubectl cluster-info
+kubectl get nodes
+kubectl get pods --all-namespaces
+```
 
-| Имя | Описание |
-|------|-----------|
-| `cluster_id` | ID кластера Kubernetes |
-| `cluster_name` | Имя созданного кластера |
-| `kms_key_id` | ID KMS ключа шифрования |
-| `service_account_id` | ID сервисного аккаунта |
-| `network_id` | ID VPC сети |
-| `master_endpoint` | Внешний endpoint API Kubernetes |
-| `master_ca_certificate` | Корневой сертификат кластера (sensitive) |
-| `kubeconfig_command` | Команда для загрузки kubeconfig в kubectl |
+## 📤 Выходные значения (Outputs)
 
-***
+После успешного развёртывания получить следующие значения:
 
-## 🔐 Безопасность
+```bash
+# ID кластера
+terraform output cluster_id
 
-- Все секреты Kubernetes шифруются с помощью **Yandex KMS**.
-- Вся инфраструктура отделена в собственную VPC.
-- Узлы имеют **ограниченный доступ к интернету** (NAT отключен).
-- Доступ к кластеру выполняется через сервисный аккаунт с ограниченными ролями.
+# Имя кластера
+terraform output cluster_name
 
-***
+# ID KMS ключа
+terraform output kms_key_id
 
-## 🧹 Удаление инфраструктуры
+# ID Service Account
+terraform output service_account_id
 
-Чтобы удалить все ресурсы:
+# ID VPC сети
+terraform output network_id
+
+# Команда для конфигурации kubectl
+terraform output kubeconfig_command
+
+# Endpoint Kubernetes API Server
+terraform output master_endpoint
+
+# CA сертификат (чувствительные данные)
+terraform output master_ca_certificate
+
+# Endpoint MySQL внутри кластера
+terraform output mysql_endpoint
+
+# URL phpMyAdmin
+terraform output phpmyadmin_url
+
+# Статус кластера
+terraform output cluster_status
+```
+
+## 💾 Backend состояния (S3 + DynamoDB)
+
+Terraform состояние хранится в S3 бакете `dio-bucket` в Yandex Object Storage:
+
+**Параметры backend:**
+
+```hcl
+backend "s3" {
+  # Credentials
+  shared_credentials_files = ["~/.aws/credentials"]
+  shared_config_files      = ["~/.aws/config"]
+  profile                  = "default"
+  
+  # S3 настройки
+  region                   = "ru-central1"
+  bucket                   = "dio-bucket"
+  key                      = "terraform-learning/terraform.tfstate"
+  
+  # DynamoDB для блокировки (state locking)
+  dynamodb_table           = "dio-bucket-lock-01"
+  
+  # Yandex Cloud endpoints
+  endpoints = {
+    dynamodb = "https://docapi.serverless.yandexcloud.net/ru-central1/b1g2uh898q9ekgq43tfq/etns1jscufdghn2f5san"
+    s3       = "https://storage.yandexcloud.net"
+  }
+  
+  # Validation
+  skip_region_validation      = true
+  skip_credentials_validation = true
+  skip_requesting_account_id  = true
+  skip_s3_checksum            = true
+}
+```
+
+### Блокировка состояния
+
+DynamoDB таблица `dio-bucket-lock-01` обеспечивает распределённую блокировку состояния, предотвращая одновременные применения конфигурации разными пользователями.
+
+## 🔧 Управление кластером
+
+### Добавление Worker Nodes
+
+Масштабирование выполняется автоматически благодаря auto-scaling политике:
+
+```hcl
+scale_policy {
+  auto_scale {
+    min     = 1      # Минимум nodes
+    max     = 3      # Максимум nodes
+    initial = 1      # Начальное количество
+  }
+}
+```
+
+Для изменения лимитов отредактируйте `variables.tf` и выполните `terraform apply`.
+
+### Обновление Kubernetes версии
+
+Обновите переменную:
+
+```bash
+terraform apply -var="k8s_version=1.33"
+```
+
+Мастер и ноды обновятся в maintenance window (Sunday 22:00-01:00).
+
+### Обновление MySQL
+
+Для обновления MySQL образа:
+
+```bash
+terraform apply -var="mysql_image=mysql:8.4"
+```
+
+Pod будет пересоздан с новым образом.
+
+## 📡 Доступ к сервисам
+
+### MySQL
+
+**Внутри кластера (для приложений):**
+```
+mysql.default.svc.cluster.local:3306
+Username: db-user
+Password: <mysql_password из variables>
+Database: db-test
+```
+
+**Извне кластера (если Public IP настроен):**
+```bash
+# Найти Public IP ноды
+kubectl get nodes -o wide
+
+# Подключиться через MySQL Client
+mysql -h <NODE_PUBLIC_IP> -u db-user -p -D db-test
+```
+
+### phpMyAdmin
+
+**Получить URL:**
+```bash
+terraform output phpmyadmin_url
+```
+
+**Доступ:**
+- URL: http://<LOAD_BALANCER_IP>
+- Username: db-user
+- Password: <mysql_password из variables>
+
+### Kubernetes API
+
+**Endpoint:**
+```bash
+terraform output master_endpoint
+```
+
+**Доступ через kubectl:**
+```bash
+kubectl cluster-info
+```
+
+## 🔄 Обслуживание и мониторинг
+
+### Maintenance Windows
+
+**Master:**
+- День: Sunday (воскресенье)
+- Время: 22:00 - 01:00 (3 часа)
+- Auto-upgrade: Enabled
+
+**Worker Nodes:**
+- День: Sunday
+- Время: 23:00 - 01:00 (2 часа)
+- Auto-repair: Enabled
+- Auto-upgrade: Enabled
+
+### Проверка состояния
+
+```bash
+# Статус кластера
+kubectl cluster-info
+
+# Статус нод
+kubectl get nodes -o wide
+
+# Статус подов
+kubectl get pods -A
+
+# Логи mysql пода
+kubectl logs mysql
+
+# Логи phpmyadmin
+kubectl logs -l app=phpmyadmin
+```
+
+### Масштабирование
+
+Текущая конфигурация использует preemptible ноды (economy класс) для экономии затрат:
+
+```hcl
+scheduling_policy {
+  preemptible = true  # Экономичные ноды, могут быть прерваны
+}
+```
+
+Для production рекомендуется использовать стандартные ноды:
+
+```hcl
+scheduling_policy {
+  preemptible = false
+}
+```
+
+## ⚠️ Важные замечания
+
+### Production vs Development
+
+Текущая конфигурация оптимизирована для обучения и тестирования:
+
+| Параметр | Current | Production |
+|----------|---------|-----------|
+| MySQL Storage | EmptyDir (теряется) | PersistentVolume |
+| MySQL Replicas | 1 | 3+ (для HA) |
+| Preemptible Nodes | true | false |
+| Backup | Отсутствует | Настроен |
+| Secrets Management | Kubernetes Secret | Vault/Sealed Secrets |
+| Monitoring | Отсутствует | Prometheus + Grafana |
+
+### Безопасность
+
+**Необходимые изменения для production:**
+
+1. **Изменить пароль MySQL** в `variables.tf`
+2. **Использовать PersistentVolume** вместо EmptyDir
+3. **Настроить RBAC** для приложений
+4. **Включить Network Policies** для изоляции трафика
+5. **Использовать Sealed Secrets** для хранения credentials
+6. **Ограничить доступ** к Security Group (уберите 0.0.0.0/0)
+7. **Включить логирование и мониторинг**
+
+### Затраты
+
+**Приблизительные затраты на Yandex Cloud (monthly):**
+
+- Kubernetes кластер (1 мастер): ~3-5 USD
+- 3 ноды (4 cores, 2GB, preemptible): ~10-15 USD
+- Network (traffic, public IP): ~5-10 USD
+- Storage (30GB boot disks × 3): ~3-5 USD
+
+**Итого: ~20-35 USD/месяц** (примерно)
+
+## 🗑️ Удаление ресурсов
+
+Для удаления всех созданных ресурсов:
 
 ```bash
 terraform destroy
 ```
 
-***
+⚠️ **Внимание**: Эта команда удалит:
+- Kubernetes кластер
+- Все Node Groups
+- VPC и подсети
+- Security Groups
+- KMS ключ
+- MySQL Pod и Storage
+- phpMyAdmin Deployment
 
-## ⚙️ Рекомендации
+Состояние останется в S3 бакете. Для полного удаления состояния:
 
-- Для production рекомендуется установить `public_ip = false` в блоке `master`.
-- Добавить **NAT‑инстанс** или **Cloud NAT** для выхода узлов в интернет.
-- Подключить логирование и мониторинг (например, Yandex Monitoring).
-- Настроить регулярную ротацию ключей KMS (`rotation_period` можно уменьшить).
+```bash
+aws s3 rm s3://dio-bucket/terraform-learning/terraform.tfstate --profile default
+```
+
+## 📚 Полезные команды
+
+```bash
+# Инициализация
+terraform init
+
+# Валидация конфигурации
+terraform validate
+
+# Форматирование кода
+terraform fmt -recursive
+
+# Проверка плана без изменений
+terraform plan
+
+# Применение конфигурации
+terraform apply
+
+# Удаление всех ресурсов
+terraform destroy
+
+# Получение конкретного output
+terraform output cluster_id
+
+# Обновление состояния из облака
+terraform refresh
+
+# Импорт существующего ресурса
+terraform import <resource_type>.<name> <resource_id>
+
+# Вывод переменных в JSON
+terraform output -json
+
+# Просмотр состояния
+terraform state list
+terraform state show <resource>
+```
+
+## 🐛 Troubleshooting
+
+### Ошибка: "Provider source not available"
+
+```bash
+rm -rf .terraform
+terraform init
+```
+
+### Ошибка: "DynamoDB table not found"
+
+Создайте таблицу вручную:
+
+```bash
+aws dynamodb create-table \
+  --table-name dio-bucket-lock-01 \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --endpoint-url https://docapi.serverless.yandexcloud.net/ru-central1/b1g2uh898q9ekgq43tfq/etns1jscufdghn2f5san
+```
+
+### Ошибка: "kubernetes provider not authenticated"
+
+Обновите kubeconfig:
+
+```bash
+yc managed-kubernetes cluster get-credentials ha-k8s-cluster --external
+```
+
+### Ошибка: "insufficient permissions"
+
+Проверьте роли Service Account:
+
+```bash
+yc iam service-account list-access-bindings <SA_ID>
+```
+
+### MySQL Pod не запускается
+
+Проверьте логи:
+
+```bash
+kubectl describe pod mysql
+kubectl logs mysql
+```
+
+Проверьте ресурсы:
+
+```bash
+kubectl top node
+kubectl describe node <node-name>
+```
+
+## 📖 Дополнительные ресурсы
+
+- **Yandex Cloud Documentation**: https://cloud.yandex.ru/docs
+- **Terraform Yandex Provider**: https://registry.terraform.io/providers/yandex-cloud/yandex
+- **Kubernetes Official Docs**: https://kubernetes.io/docs
+- **Yandex KMS**: https://cloud.yandex.ru/docs/kms/
+
+## 📝 Лицензия
+
+Этот проект является учебным материалом и доступен для использования в образовательных целях.
+
+## 👤 Автор
+
+Проект создан как часть курса DevOps/Kubernetes на Netology.
+
+---
+
+**Последнее обновление**: Ноябрь 2025
+**Версия Terraform**: >= 1.8
+**Версия Kubernetes**: 1.32

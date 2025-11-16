@@ -155,3 +155,8 @@ ssh -J ubuntu@51.250.68.72 ubuntu@192.168.10.254
 # Убрать старую запись
 ssh-keygen -f ~/.ssh/known_hosts -R 192.168.10.10
 ```
+
+sysctl net.ipv4.ip_forward
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+sudo iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
