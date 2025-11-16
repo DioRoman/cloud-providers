@@ -100,6 +100,17 @@
 
 ***
 
+<img width="1471" height="226" alt="Снимок экрана 2025-11-09 015343" src="https://github.com/user-attachments/assets/970d1e40-7fea-42da-b651-62144ef3985c" />
+
+<img width="1669" height="209" alt="Снимок экрана 2025-11-09 015403" src="https://github.com/user-attachments/assets/bd718a38-0135-4803-981b-2136da9a3012" />
+
+<img width="253" height="179" alt="Снимок экрана 2025-11-09 015409" src="https://github.com/user-attachments/assets/d243ba30-342e-4f67-a9cf-e9f8aceb9a11" />
+
+<img width="1507" height="313" alt="Снимок экрана 2025-11-09 015416" src="https://github.com/user-attachments/assets/f6d783c5-2c62-4b62-b526-d89211e48e29" />
+
+<img width="627" height="236" alt="Снимок экрана 2025-11-09 015508" src="https://github.com/user-attachments/assets/6f9b958a-076a-4037-bb58-a04be55a36ac" />
+
+
 ## Выходные данные
 
 | Имя | Описание |
@@ -144,6 +155,10 @@ mysql_password_version = "v2"
 ```bash
 terraform apply
 ```
+
+<img width="512" height="169" alt="Снимок экрана 2025-11-09 015525" src="https://github.com/user-attachments/assets/9d9fd9cb-268b-486a-9588-6ff8b71808c1" />
+
+<img width="1185" height="290" alt="Снимок экрана 2025-11-16 144025" src="https://github.com/user-attachments/assets/4dc6a64b-3766-44a6-b812-d715bba4a936" />
 
 Terraform создаст новую версию секрета и обновит пользователя MySQL.
 
