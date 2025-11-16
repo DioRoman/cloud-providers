@@ -164,111 +164,6 @@ resource "kubernetes_secret" "mysql-password" {
 
 ⚠️ **Важно**: В production следует использовать более безопасные способы управления secrets (например, Sealed Secrets, HashiCorp Vault).
 
-## 📊 Переменные конфигурации
-
-### Основные переменные
-
-```hcl
-variable "cloud_id" {
-  type        = string
-  default     = "b1g2uh898q9ekgq43tfq"
-  description = "ID облака Yandex Cloud"
-}
-
-variable "folder_id" {
-  type        = string
-  default     = "b1g22qi1cc8rq4avqgik"
-  description = "ID папки Yandex Cloud"
-}
-```
-
-### Переменные Kubernetes
-
-```hcl
-variable "cluster_ipv4_range" {
-  type        = string
-  default     = "10.1.0.0/16"
-  description = "IPv4 диапазон для подсетей Pod'ов"
-}
-
-variable "service_ipv4_range" {
-  type        = string
-  default     = "10.2.0.0/16"
-  description = "IPv4 диапазон для Service'ов"
-}
-
-variable "k8s_version" {
-  type        = string
-  default     = "1.32"
-  description = "Версия Kubernetes"
-}
-```
-
-### Переменные MySQL
-
-```hcl
-variable "mysql_password" {
-  type        = string
-  sensitive   = true
-  description = "Пароль MySQL root пользователя"
-  default     = "ZAQ!xsw2"  # Измените на production!
-}
-
-variable "mysql_resources" {
-  type = object({
-    cpu      = string
-    memory   = string
-    cpu_req  = string
-    mem_req  = string
-  })
-  default = {
-    cpu      = "1000m"
-    memory   = "1Gi"
-    cpu_req  = "500m"
-    mem_req  = "512Mi"
-  }
-  description = "Ресурсы для MySQL Pod"
-}
-```
-
-### Переменные Subnets
-
-```hcl
-variable "subnets" {
-  type = list(object({
-    name        = string
-    cidr        = string
-    zone        = string
-    description = string
-    labels      = map(string)
-  }))
-  default = [
-    {
-      name        = "k8s-subnet-zone-a"
-      cidr        = "10.5.0.0/16"
-      zone        = "ru-central1-a"
-      description = "Subnet in ru-central1-a"
-      labels      = { zone = "ru-central1-a", tier = "worker" }
-    },
-    {
-      name        = "k8s-subnet-zone-b"
-      cidr        = "10.6.0.0/16"
-      zone        = "ru-central1-b"
-      description = "Subnet in ru-central1-b"
-      labels      = { zone = "ru-central1-b", tier = "worker" }
-    },
-    {
-      name        = "k8s-subnet-zone-d"
-      cidr        = "10.7.0.0/16"
-      zone        = "ru-central1-d"
-      description = "Subnet in ru-central1-d"
-      labels      = { zone = "ru-central1-d", tier = "worker" }
-    },
-  ]
-  description = "Список подсетей для VPC"
-}
-```
-
 ## 🚀 Установка и развёртывание
 
 ### Предварительные требования
@@ -407,37 +302,6 @@ terraform output cluster_status
 ## 💾 Backend состояния (S3 + DynamoDB)
 
 Terraform состояние хранится в S3 бакете `dio-bucket` в Yandex Object Storage:
-
-**Параметры backend:**
-
-```hcl
-backend "s3" {
-  # Credentials
-  shared_credentials_files = ["~/.aws/credentials"]
-  shared_config_files      = ["~/.aws/config"]
-  profile                  = "default"
-  
-  # S3 настройки
-  region                   = "ru-central1"
-  bucket                   = "dio-bucket"
-  key                      = "terraform-learning/terraform.tfstate"
-  
-  # DynamoDB для блокировки (state locking)
-  dynamodb_table           = "dio-bucket-lock-01"
-  
-  # Yandex Cloud endpoints
-  endpoints = {
-    dynamodb = "https://docapi.serverless.yandexcloud.net/ru-central1/b1g2uh898q9ekgq43tfq/etns1jscufdghn2f5san"
-    s3       = "https://storage.yandexcloud.net"
-  }
-  
-  # Validation
-  skip_region_validation      = true
-  skip_credentials_validation = true
-  skip_requesting_account_id  = true
-  skip_s3_checksum            = true
-}
-```
 
 ### Блокировка состояния
 
@@ -605,17 +469,6 @@ scheduling_policy {
 6. **Ограничить доступ** к Security Group (уберите 0.0.0.0/0)
 7. **Включить логирование и мониторинг**
 
-### Затраты
-
-**Приблизительные затраты на Yandex Cloud (monthly):**
-
-- Kubernetes кластер (1 мастер): ~3-5 USD
-- 3 ноды (4 cores, 2GB, preemptible): ~10-15 USD
-- Network (traffic, public IP): ~5-10 USD
-- Storage (30GB boot disks × 3): ~3-5 USD
-
-**Итого: ~20-35 USD/месяц** (примерно)
-
 ## 🗑️ Удаление ресурсов
 
 Для удаления всех созданных ресурсов:
@@ -637,98 +490,6 @@ terraform destroy
 
 ```bash
 aws s3 rm s3://dio-bucket/terraform-learning/terraform.tfstate --profile default
-```
-
-## 📚 Полезные команды
-
-```bash
-# Инициализация
-terraform init
-
-# Валидация конфигурации
-terraform validate
-
-# Форматирование кода
-terraform fmt -recursive
-
-# Проверка плана без изменений
-terraform plan
-
-# Применение конфигурации
-terraform apply
-
-# Удаление всех ресурсов
-terraform destroy
-
-# Получение конкретного output
-terraform output cluster_id
-
-# Обновление состояния из облака
-terraform refresh
-
-# Импорт существующего ресурса
-terraform import <resource_type>.<name> <resource_id>
-
-# Вывод переменных в JSON
-terraform output -json
-
-# Просмотр состояния
-terraform state list
-terraform state show <resource>
-```
-
-## 🐛 Troubleshooting
-
-### Ошибка: "Provider source not available"
-
-```bash
-rm -rf .terraform
-terraform init
-```
-
-### Ошибка: "DynamoDB table not found"
-
-Создайте таблицу вручную:
-
-```bash
-aws dynamodb create-table \
-  --table-name dio-bucket-lock-01 \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --endpoint-url https://docapi.serverless.yandexcloud.net/ru-central1/b1g2uh898q9ekgq43tfq/etns1jscufdghn2f5san
-```
-
-### Ошибка: "kubernetes provider not authenticated"
-
-Обновите kubeconfig:
-
-```bash
-yc managed-kubernetes cluster get-credentials ha-k8s-cluster --external
-```
-
-### Ошибка: "insufficient permissions"
-
-Проверьте роли Service Account:
-
-```bash
-yc iam service-account list-access-bindings <SA_ID>
-```
-
-### MySQL Pod не запускается
-
-Проверьте логи:
-
-```bash
-kubectl describe pod mysql
-kubectl logs mysql
-```
-
-Проверьте ресурсы:
-
-```bash
-kubectl top node
-kubectl describe node <node-name>
 ```
 
 ## 📖 Дополнительные ресурсы
